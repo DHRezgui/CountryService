@@ -1,0 +1,66 @@
+pipeline {
+    agent any
+
+    tools {
+        maven 'M2_HOME'  // Nom exact de Maven configuré dans Jenkins
+    }
+
+    environment {
+        SONARQUBE = 'MySonarQubeServer' // Nom configuré dans Jenkins > Manage Jenkins > Configure System
+    }
+
+    stages {
+        stage('Checkout code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/DHRezgui/CountryService.git'
+            }
+        }
+
+        stage('Build') {
+            steps {
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Unit Tests') {
+            steps {
+                sh 'mvn test'
+            }
+            post {
+                always {
+                    junit '**/target/surefire-reports/*.xml'
+                }
+            }
+        }
+
+        stage('Code Analysis - SonarQube') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    sh 'mvn sonar:sonar'
+                }
+            }
+        }
+
+        stage('Publish to Nexus') {
+            steps {
+                sh 'mvn deploy'
+            }
+        }
+
+        stage('Deploy to Tomcat') {
+            steps {
+                deploy adapters: [tomcat9(credentialsId: 'tomcat', url: 'http://localhost:8080')],
+                       contextPath: '/', war: '**/target/*.war'
+            }
+        }
+    }
+
+    post {
+        success {
+            echo ' Déploiement réussi sur Tomcat et artefact stocké sur Nexus !'
+        }
+        failure {
+            echo ' Le pipeline a échoué, vérifie les logs Jenkins.'
+        }
+    }
+}
